@@ -39,24 +39,19 @@ import org.slf4j.LoggerFactory;
  * Creates a fully tokenized Document from raw text or Stanford Tokens.
  * @author sarnold, fgrimme
  */
-public class DocumentFactory {
+public class DocumentFactory implements IDocumentFactory {
 
   protected final static Logger log = LoggerFactory.getLogger(DocumentFactory.class);
-  public static final int AVERAGE_ENGLISH_SENTENCE_LENGTH = 14;
 
   protected static DocumentFactory instance = new DocumentFactory();
-  
-  public static DocumentFactory getInstance() {
-    return instance;
-  }
-  
-  public static enum Newlines { KEEP, KEEP_DOUBLE, DISCARD };
+
+  ;
   
 	private final StanfordCoreNLP pipeline;
-  WordToSentenceProcessor<Token> tts;
-  WordToSentenceProcessor<Word> wts;
-  WordTokenFactory wtf;
-  PTBTokenizerFactory<Word> ptf;
+  WordToSentenceProcessor<Token> tokenToSentenceProcessor;
+  WordToSentenceProcessor<Word> wordToSentenceProcessor;
+  WordTokenFactory wordTokenFactory;
+  PTBTokenizerFactory<Word> tokenizerFactory;
   TextObjectFactory textObjectFactory;
   LanguageDetector languageDetector;
   
@@ -68,15 +63,15 @@ public class DocumentFactory {
     Properties props = new Properties();
     props.setProperty("annotators", "tokenize, ssplit");
     pipeline = new StanfordCoreNLP(props);
-    tts = new WordToSentenceProcessor<>(WordToSentenceProcessor.NewlineIsSentenceBreak.ALWAYS);
-    //wts = new WordToSentenceProcessor<>(WordToSentenceProcessor.NewlineIsSentenceBreak.ALWAYS);
-    wts = new WordToSentenceProcessor<>(WordToSentenceProcessor.DEFAULT_BOUNDARY_REGEX + "|\\*NL\\*", WordToSentenceProcessor.DEFAULT_BOUNDARY_FOLLOWERS_REGEX + "|\\*NL\\*",
-            Generics.newHashSet(), null, null, WordToSentenceProcessor.NewlineIsSentenceBreak.ALWAYS, null, null, false, false);
-    wtf = new WordTokenFactory();
+    tokenToSentenceProcessor = new WordToSentenceProcessor<>(WordToSentenceProcessor.NewlineIsSentenceBreak.ALWAYS);
+    //wordToSentenceProcessor = new WordToSentenceProcessor<>(WordToSentenceProcessor.NewlineIsSentenceBreak.ALWAYS);
+    wordToSentenceProcessor = new WordToSentenceProcessor<>(WordToSentenceProcessor.DEFAULT_BOUNDARY_REGEX + "|\\*NL\\*", WordToSentenceProcessor.DEFAULT_BOUNDARY_FOLLOWERS_REGEX + "|\\*NL\\*",
+                                                            Generics.newHashSet(), null, null, WordToSentenceProcessor.NewlineIsSentenceBreak.ALWAYS, null, null, false, false);
+    wordTokenFactory = new WordTokenFactory();
     // see http://nlp.stanford.edu/nlp/javadoc/javanlp/edu/stanford/nlp/process/PTBTokenizer.html
-    ptf = PTBTokenizerFactory.newWordTokenizerFactory("tokenizeNLs=true,ptb3Escaping=false,americanize=false,"
-              + "normalizeParentheses=false,normalizeOtherBrackets=false,asciiQuotes=true,latexQuotes=false,"
-              + "escapeForwardSlashAsterisk=false,untokenizable=noneDelete");
+    tokenizerFactory = PTBTokenizerFactory.newWordTokenizerFactory("tokenizeNLs=true,ptb3Escaping=false,americanize=false,"
+                                                                   + "normalizeParentheses=false,normalizeOtherBrackets=false,asciiQuotes=true,latexQuotes=false,"
+                                                                   + "escapeForwardSlashAsterisk=false,untokenizable=noneDelete");
     
     try {
       //load all languages:
@@ -91,71 +86,37 @@ public class DocumentFactory {
       log.error("Could not load language profiles");
     }
   }
-  
-  /**
-   * Creates a Document with Sentences and Tokens from a String.
-   * Uses Stanford CoreNLP PTBTokenizerFactory and removes Tabs, Newlines and trailing whitespace.
-   * Use fromText(text, true) to keep the original String in memory.
-   * @param text
-   * @return 
-   */
-  public static Document fromText(String text) {
-		return instance.createFromText(text);
-	}
-  
-  public static Document fromText(String text, Newlines newlines) {
-		return instance.createFromText(text, newlines);
-	}
-  
-  /**
-   * Creates a Document from existing Tokens, processing Span positions and Sentence splitting.
-   */
-  public static Document fromTokens(List<Token> tokens) {
-		return instance.createFromTokens(tokens);
-	}
-  
-  /**
-   * Create Tokens from raw text, without sentence splitting.
-   */
-  public static List<Token> createTokensFromText(String text) {
-		return instance.tokenizeFast(text);
-	}
-  
-  /**
-   * Create Tokens from tokenized text, without sentence splitting.
-   */
-  public static List<Token> createTokensFromTokenizedText(String text) {
-    return instance.createTokensFromTokenizedText(text, 0);
-  }
-    
+
   /**
    * Creates a Document with Sentences and Tokens from a String.
    * Uses Stanford CoreNLP PTBTokenizerFactory.
    * @param text
-   * @param keepOrig - if TRUE, a copy of the string is saved to keep newlines and tabs.
    * @return 
    */
+  @Override
   public synchronized Document createFromText(String text) {
     Document doc = new Document();
     addToDocumentFromText(text, doc, Newlines.DISCARD);
     return doc;
   }
   
+  @Override
   public synchronized Document createFromText(String text, Newlines newlines) {
     Document doc = new Document();
     addToDocumentFromText(text, doc, newlines);
     return doc;
   }
   
+  @Override
   public synchronized void addToDocumentFromText(String text, Document doc, Newlines newlines) {
     doc.setLanguage(detectLanguage(text));
     int offset = doc.getEnd();
     if(offset > 0) offset++;
     try(Reader r = new StringReader(text)) {
-      List<Word> words = ptf.getTokenizer(r).tokenize();
+      List<Word> words = tokenizerFactory.getTokenizer(r).tokenize();
       words = fixTokenization(words);
       int countNewlines = 0;
-      for(List<Word> sentence : wts.process(words)) {
+      for(List<Word> sentence : wordToSentenceProcessor.process(words)) {
         Sentence s = new Sentence();
         for(Word w : sentence) {
           if(w.word().equals("*NL*")) { // newline
@@ -186,10 +147,11 @@ public class DocumentFactory {
     } 
   }
   
+  @Override
   public synchronized List<Token> tokenizeFast(String text) {
     ArrayList<Token> result = new ArrayList<>();
     try(Reader r = new StringReader(text)) {
-      List<Word> words = ptf.getTokenizer(r).tokenize();
+      List<Word> words = tokenizerFactory.getTokenizer(r).tokenize();
       words = fixTokenization(words);
       for(Word w : words) {
         if(!w.word().trim().isEmpty()) result.add(new Token(w.word(), w.beginPosition(), w.endPosition()));
@@ -199,11 +161,8 @@ public class DocumentFactory {
     }
     return result;
   }
-  
-  public static String getLanguage(String text) {
-    return instance.detectLanguage(text);
-  }
-  
+
+  @Override
   public synchronized String detectLanguage(String text) {
     try {
       TextObject textObject = textObjectFactory.forText(text);
@@ -222,7 +181,7 @@ public class DocumentFactory {
   private List<Word> fixTokenization(Iterable<Word> words) {
     List<Word> result = new ArrayList<>();
     Iterator<Word> it = words.iterator();
-    String split = wts.DEFAULT_BOUNDARY_REGEX;
+    String split = wordToSentenceProcessor.DEFAULT_BOUNDARY_REGEX;
     String nosplit = "^(\\d{1,3}|[a-zäüö]|[IVXLCDM]+|ggf|evtl|bzw|engl|dpt|griech|lat|allg|bspw|geb)$"; // German abbreviations are not in CoreNLP
     Word last = Word.EMPTY;
     Word word;
@@ -247,6 +206,7 @@ public class DocumentFactory {
     return result;
   }
   
+@Override
 public Document createFromTokens(List<Token> tokens) {
     Document doc = new Document();
     createSentencesFromTokens(tokens).forEach(sentence -> {
@@ -256,15 +216,12 @@ public Document createFromTokens(List<Token> tokens) {
     return doc;
   }
 
-  public static Sentence createSentenceFromTokens(List<Token> sentence) {
-    return instance.createSentenceFromTokens(sentence, "", 0);
-  }
-  
+  @Override
   public List<Sentence> createSentencesFromTokens(List<Token> tokens) {
     List<Sentence> sentences = new ArrayList<>(tokens.size() / AVERAGE_ENGLISH_SENTENCE_LENGTH);
     int lastCursorPos = 0;
     String lastTokenString = "";
-    for(List<Token> sentenceTokens : instance.tts.process(tokens)) {
+    for(List<Token> sentenceTokens : instance.tokenToSentenceProcessor.process(tokens)) {
       Sentence sentence = createSentenceFromTokens(sentenceTokens, lastTokenString, lastCursorPos);
       lastCursorPos = sentence.getEnd();
       int lastTokenIndex = sentence.getTokens().size() - 1;
@@ -274,7 +231,7 @@ public Document createFromTokens(List<Token> tokens) {
     return sentences;
   }
   
-  private Sentence createSentenceFromTokens(List<Token> sentence, String last, Integer cursor) {
+  public Sentence createSentenceFromTokens(List<Token> sentence, String last, Integer cursor) {
     int length;
     Sentence s = new Sentence();
     s.setBegin(cursor);
@@ -294,6 +251,7 @@ public Document createFromTokens(List<Token> tokens) {
   /**
    * Creates a list of Tokens from raw text (ignores sentences)
    */
+  @Override
   public List<Token> createTokensFromText(String text, int offset) {
     List<Token> tokens = new ArrayList<>();
     edu.stanford.nlp.pipeline.Annotation document = new edu.stanford.nlp.pipeline.Annotation(text);
@@ -312,6 +270,7 @@ public Document createFromTokens(List<Token> tokens) {
   /**
    * Creates a list of Tokens from tokenized text, keeping the original tokenization.
    */
+  @Override
   public List<Token> createTokensFromTokenizedText(String text, int offset) {
     List<Token> tokens = new ArrayList<>();
     String last = "";
@@ -329,6 +288,7 @@ public Document createFromTokens(List<Token> tokens) {
   /**
    * Recreates the document with automatic tokenization. Offsets are kept.
    */
+  @Override
   public void retokenize(Document doc) {
     doc.setText(doc.getText());
   }

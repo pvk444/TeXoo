@@ -70,6 +70,11 @@
       <artifactId>deeplearning4j-nlp</artifactId>
       <version>${dl4j.version}</version>
       <type>jar</type>
+    </dependency>    <dependency>
+      <groupId>org.deeplearning4j</groupId>
+      <artifactId>deeplearning4j-nlp-uima</artifactId>
+      <version>${dl4j.version}</version>
+      <type>jar</type>
     </dependency>
     <dependency>
       <groupId>org.nd4j</groupId>
