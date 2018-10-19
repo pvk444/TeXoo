@@ -1,18 +1,21 @@
 package de.datexis.model;
 
+import static de.datexis.model.Dataset.random;
+
+import de.datexis.common.WordHelpers;
+import de.datexis.model.tag.Tag;
+import de.datexis.preprocess.IDocumentFactory.Newlines;
+import de.datexis.preprocess.OpenNLPDocumentFactory;
+
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonPropertyOrder;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
+
 import java.util.ArrayList;
-import java.util.List;
-import de.datexis.common.WordHelpers;
-import static de.datexis.model.Dataset.random;
-import de.datexis.model.tag.Tag;
-import de.datexis.preprocess.DocumentFactory;
-import de.datexis.preprocess.IDocumentFactory.Newlines;
 import java.util.Collection;
 import java.util.EnumMap;
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.TreeSet;
@@ -26,9 +29,9 @@ import java.util.stream.Stream;
  * @author sarnold, fgrimme
  */
 @JsonPropertyOrder({ "class", "id", "uid", "refUid", "language", "type", "begin", "length", "text", "annotations" })
-@JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY, property = "class", defaultImpl=Document.class)
+@JsonTypeInfo(use = JsonTypeInfo.Id.NAME, include = JsonTypeInfo.As.PROPERTY, property = "class", defaultImpl= OpenNLPDocument.class)
 @JsonIgnoreProperties(ignoreUnknown = true)
-public class Document extends Span {
+public class OpenNLPDocument extends Document {
 
 	/**
 	 * All Sentences the Document is referencing
@@ -70,7 +73,7 @@ public class Document extends Span {
 	/**
 	 * Create an empty Document
 	 */
-	public Document() {
+	public OpenNLPDocument() {
 		sentences = new ArrayList<>();
     annotations = new ArrayList<>();
 	}
@@ -219,7 +222,7 @@ public class Document extends Span {
     else append(doc, true);
   }*/
   
-  public void append(Document doc) {
+  public void append(OpenNLPDocument doc) {
     int offset;
     if(isEmpty() || getText().endsWith("\n") || getText().endsWith(" ")) offset = getEnd();
     else offset = getEnd() + 1;
@@ -505,18 +508,18 @@ public class Document extends Span {
     sentences.clear();
     setBegin(0);
     setEnd(0);
-    DocumentFactory.getInstance().addToDocumentFromText(text, this, Newlines.KEEP);
+    OpenNLPDocumentFactory.getInstance().addToDocumentFromText(text, this, Newlines.KEEP);
   }
 
   /**
    * @return a deep copy of this Document
    */
-  public Document clone() {
+  public OpenNLPDocument clone() {
     return clone(Function.identity());
   }
 
-  public Document clone(Function<String,String> transform) {
-    Document result = new Document();
+  public OpenNLPDocument clone(Function<String,String> transform) {
+    OpenNLPDocument result = new OpenNLPDocument();
     for(Sentence s : getSentences()) {
       result.addSentence(s.clone(transform), false);
     }
@@ -532,10 +535,10 @@ public class Document extends Span {
     if(this == o) {
       return true;
     }
-    if(!(o instanceof Document)) {
+    if(!(o instanceof OpenNLPDocument)) {
       return false;
     }
-    Document document = (Document) o;
+    OpenNLPDocument document = (OpenNLPDocument) o;
     return super.equals(document) &&
            Objects.equals(getLanguage(), document.getLanguage()) &&
            Objects.equals(getType(), document.getType()) &&

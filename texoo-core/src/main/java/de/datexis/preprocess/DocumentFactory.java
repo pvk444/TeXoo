@@ -44,8 +44,6 @@ public class DocumentFactory implements IDocumentFactory {
   protected final static Logger log = LoggerFactory.getLogger(DocumentFactory.class);
 
   protected static DocumentFactory instance = new DocumentFactory();
-
-  ;
   
 	private final StanfordCoreNLP pipeline;
   WordToSentenceProcessor<Token> tokenToSentenceProcessor;
@@ -85,6 +83,55 @@ public class DocumentFactory implements IDocumentFactory {
     } catch (IOException ex) {
       log.error("Could not load language profiles");
     }
+  }
+
+
+  public static DocumentFactory getInstance() {
+    return DocumentFactory.instance;
+  }
+
+  /**
+   * Creates a Document with Sentences and Tokens from a String.
+   * Uses Stanford CoreNLP PTBTokenizerFactory and removes Tabs, Newlines and trailing whitespace.
+   * Use fromText(text, true) to keep the original String in memory.
+   *
+   * @return TeXoo document model with tokenized text.
+   */
+  public static Document fromText(String text) {
+    return DocumentFactory.instance.createFromText(text);
+  }
+
+  public static Document fromText(String text, Newlines newlines) {
+    return DocumentFactory.instance.createFromText(text, newlines);
+  }
+
+  /**
+   * Creates a Document from existing Tokens, processing Span positions and Sentence splitting.
+   */
+  public static Document fromTokens(List<Token> tokens) {
+    return DocumentFactory.instance.createFromTokens(tokens);
+  }
+
+  /**
+   * Create Tokens from raw text, without sentence splitting.
+   */
+  public static List<Token> createTokensFromText(String text) {
+    return DocumentFactory.instance.tokenizeFast(text);
+  }
+
+  /**
+   * Create Tokens from tokenized text, without sentence splitting.
+   */
+  public static List<Token> createTokensFromTokenizedText(String text) {
+    return DocumentFactory.instance.createTokensFromTokenizedText(text, 0);
+  }
+
+  public static String getLanguage(String text) {
+    return DocumentFactory.instance.detectLanguage(text);
+  }
+
+  public static Sentence createSentenceFromTokens(List<Token> sentence) {
+    return DocumentFactory.instance.createSentenceFromTokens(sentence, "", 0);
   }
 
   /**
