@@ -12,9 +12,7 @@ import org.apache.uima.fit.factory.AnalysisEngineFactory;
 import org.apache.uima.fit.util.JCasUtil;
 import org.apache.uima.jcas.tcas.Annotation;
 import org.apache.uima.resource.ResourceInitializationException;
-import org.apache.xerces.impl.xpath.regex.RegularExpression;
 import org.deeplearning4j.text.annotator.SentenceAnnotator;
-import org.deeplearning4j.text.annotator.TokenizerAnnotator;
 import org.deeplearning4j.text.tokenization.tokenizer.Tokenizer;
 import org.deeplearning4j.text.tokenization.tokenizerfactory.TokenizerFactory;
 import org.deeplearning4j.text.tokenization.tokenizerfactory.UimaTokenizerFactory;
@@ -25,11 +23,12 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
-import java.util.StringTokenizer;
 import java.util.stream.Collectors;
 
 public class OpenNLPDocumentFactory implements IDocumentFactory {
 
+  public static final String NEWLINE_REPLACEMENT = " NEWLINEREPL ";
+  public static final String DOUBLE_NEWLINE = "\n\n";
   protected static OpenNLPDocumentFactory instance;
 
   // TODO: fixme!
@@ -106,11 +105,19 @@ public class OpenNLPDocumentFactory implements IDocumentFactory {
   @Override
   public Document createFromText(String text, Newlines newlines) {
     Document document = new OpenNLPDocument();
+    switch (newlines) {
+      case KEEP_DOUBLE:
+        text = text.replaceAll(DOUBLE_NEWLINE, NEWLINE_REPLACEMENT);
+        break;
+      case KEEP:
+        text = text.replaceAll("\n", NEWLINE_REPLACEMENT);
+    }
     List<String> sentenceStrings = splitSentences(text);
-    List<Sentence> sentences = sentenceStrings.stream().map(sentenceString -> {
-      List<Token> tokens = tokenize(sentenceString);
-      return new Sentence(tokens);
-    }).collect(Collectors.toList());
+    List<Sentence> sentences = sentenceStrings.stream()
+                                              .map(sentenceString -> {
+                                                List<Token> tokens = tokenize(sentenceString);
+                                                return new Sentence(tokens);
+                                              }).collect(Collectors.toList());
     sentences.forEach(sentence -> document.addSentence(sentence, false));
 
     return document;
@@ -187,7 +194,7 @@ public class OpenNLPDocumentFactory implements IDocumentFactory {
       if (sentenceString.contains("\n")) {
         String[] split = sentenceString.split("\n");
         sentenceStringsWithNewlinesplits.addAll(Arrays.asList(split));
-      }else {
+      } else {
         sentenceStringsWithNewlinesplits.add(sentenceString);
       }
     }
@@ -206,30 +213,46 @@ public class OpenNLPDocumentFactory implements IDocumentFactory {
 
   // FIXME: this tokenizer discards new lines always this might become a problem
   private List<Token> tokenize(String text) {
-    
     Tokenizer tokenizer = tokenizerFactory.create(text);
     List<String> tokens = tokenizer.getTokens();
     List<Token> texooTokens = new ArrayList<>();
     int offset = 0;
+    int offsetAdjustment = 0;
     for (String token : tokens) {
-      offset = adjustOffsetForPunctuation(offset, token);
-      Token texooToken = new Token(token, offset ,offset + token.length());
+      if (!token.matches("\\.|\\)|]|}|\"|,|'[\\w]|;|:|[!?]+")) {
+        offset += offsetAdjustment;
+        offsetAdjustment = 0;
+      }
+      
+      token = token.replaceAll(NEWLINE_REPLACEMENT.trim(), "\n");
+      Token texooToken = new Token(token, offset, offset + token.length());
+      texooToken = adjustOffsetForPunctuation(texooToken);
       texooTokens.add(texooToken);
+
+
       offset = texooToken.getEnd() + 1;
+
+      if (token.matches("[\"|({\\[<]")) {
+        offsetAdjustment = -1;
+      }
     }
-    
+
     return texooTokens;
   }
 
-  private int adjustOffsetForPunctuation(int lastEnd, String token) {
-    if (token.matches("\\.|[!?]+")){
-      lastEnd -= 1;
-    } else if (token.matches("[)}\\]\"'>＂＇＞]")){
-      lastEnd -= 1;
-    }else if (token.matches("[({\\[<]")){
-      lastEnd += 1;
+  private Token adjustOffsetForPunctuation(Token texooToken) {
+    int originalBegin = texooToken.getBegin();
+    int originalEnd = texooToken.getEnd();
+    String coveredText = texooToken.getText();
+
+    if (coveredText.matches("\\.|\"|,|'[\\w]|;|:|[!?]+")) {
+      texooToken.setBegin(originalBegin -1);
+      texooToken.setEnd(originalEnd - 1);
+    } else if (coveredText.matches("\\)|}|\\]|\\|`|＞")) {
+      texooToken.setBegin(originalBegin -1);
+      texooToken.setEnd(originalEnd - 1);
     }
-    return lastEnd;
+    return texooToken;
   }
 
 }
